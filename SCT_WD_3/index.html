@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tic Tac Toe — Pro</title>
+<style>
+  :root{
+    --bg:#101015; --panel:#1b1f2a; --tile:#202635; --tile-hot:#273149;
+    --text:#e7e9ee; --accent:#7c5cff; --accent-2:#2ecc71; --warn:#ff9f43;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(1200px 600px at 80% -10%, #182033 0%, transparent 60%) , var(--bg);
+    color:var(--text); font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+    padding:24px;
+  }
+
+  .app{width:min(980px,100%); display:grid; grid-template-columns: 1fr 320px; gap:18px}
+  @media (max-width:900px){ .app{grid-template-columns:1fr} }
+
+  .card{
+    background:color-mix(in oklab, var(--panel) 86%, black);
+    border:1px solid color-mix(in oklab, var(--panel) 65%, black);
+    border-radius:18px; padding:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+
+  header{grid-column:1/-1; display:flex; gap:12px; align-items:center; justify-content:space-between}
+  header h1{font-size:24px; margin:0; letter-spacing:.5px}
+  .mode-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+
+  select, button{
+    background:var(--tile); color:var(--text); border:1px solid #2b3244; border-radius:10px;
+    padding:10px 12px; font-size:14px; cursor:pointer
+  }
+  button.primary{ background:linear-gradient(180deg, var(--accent), #5d3dff); border:none; color:white; }
+  button.ghost{ background:transparent; border:1px dashed #3a4260 }
+  button.warn{ background:linear-gradient(180deg, #ffb84d, #ff9f43); border:none; color:#241a02 }
+  button:disabled{ opacity:.6; cursor:not-allowed }
+
+  .board{
+    display:grid; grid-template-columns: repeat(3, minmax(90px, 1fr));
+    gap:10px; width:min(480px,95%); margin:18px auto;
+  }
+  .cell{
+    aspect-ratio:1/1; display:flex; align-items:center; justify-content:center;
+    font-size: clamp(28px, 7vw, 56px); font-weight:700; letter-spacing:1px;
+    background: var(--tile); border-radius:16px; user-select:none; cursor:pointer;
+    transition:transform .12s ease, background .2s ease, box-shadow .2s ease;
+    box-shadow: inset 0 0 0 1px #2b3244;
+  }
+  .cell:hover{ transform: translateY(-2px); background:var(--tile-hot) }
+  .cell.taken{ cursor:not-allowed; opacity:.95 }
+  .cell.win{ background: linear-gradient(145deg, #24344d, #102335); box-shadow: 0 0 0 2px var(--accent-2) inset }
+
+  .status{
+    text-align:center; margin-top:4px; font-size:16px
+  }
+
+  .side{
+    display:grid; gap:14px
+  }
+
+  .score{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; text-align:center
+  }
+  .score .box{
+    background: var(--tile); border-radius:14px; padding:12px 10px; border:1px solid #2b3244
+  }
+  .score .big{ font-size:26px; font-weight:800; margin-top:6px }
+  .muted{ opacity:.7; font-size:12px }
+
+  .history{
+    max-height:320px; overflow:auto; border-radius:12px; border:1px solid #2b3244;
+    background: color-mix(in oklab, var(--panel) 92%, black);
+  }
+  .history table{ width:100%; border-collapse:collapse; font-size:13px }
+  .history th, .history td{ padding:8px 10px; border-bottom:1px solid #2b3244; text-align:left }
+  .history tr:last-child td{ border-bottom:none }
+  .tag{ padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #334060 }
+  .tag.easy{ background:#1e2b2a; color:#a6f0c6; border-color:#2b6d57 }
+  .tag.medium{ background:#2a2931; color:#e0d0ff; border-color:#6b54d6 }
+  .tag.hard{ background:#2b2227; color:#ffb3c7; border-color:#b43b59 }
+  .tag.pvp{ background:#1f2838; color:#a9c6ff; border-color:#2b4e86 }
+
+  /* Confetti */
+  .confetti-piece{
+    position: fixed; top:-8px; width:8px; height:12px; opacity:.9; z-index:9999;
+    transform: translateY(-20px) rotate(0deg);
+    will-change: transform, opacity;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="card">
+      <h1>✨ Tic Tac Toe — Pro</h1>
+      <div class="mode-row">
+        <label>
+          Mode:
+          <select id="modeSelect" title="Choose game mode">
+            <option value="pvp">2 Players</option>
+            <option value="cpu">Vs Computer</option>
+          </select>
+        </label>
+
+        <label id="difficultyWrap" style="display:none">
+          Difficulty:
+          <select id="difficultySelect" title="Computer difficulty">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard" selected>Hard (Unbeatable)</option>
+          </select>
+        </label>
+
+        <button id="newGameBtn" class="primary">New Game</button>
+        <button id="resetScoresBtn" class="ghost" title="Reset scoreboard only">Reset Scores</button>
+      </div>
+    </header>
+
+    <main class="card">
+      <div class="board" id="board"></div>
+      <div class="status" id="status">Player X's turn</div>
+    </main>
+
+    <aside class="side">
+      <section class="card">
+        <h3 style="margin:0 0 8px">Scoreboard</h3>
+        <div class="score">
+          <div class="box">
+            <div class="muted">Player X</div>
+            <div class="big" id="scoreX">0</div>
+          </div>
+          <div class="box">
+            <div class="muted">Draws</div>
+            <div class="big" id="scoreD">0</div>
+          </div>
+          <div class="box">
+            <div class="muted"><span id="oLabel">Player O</span></div>
+            <div class="big" id="scoreO">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+          <h3 style="margin:0">History</h3>
+          <div style="display:flex; gap:8px">
+            <button id="exportCsvBtn" class="ghost">Export CSV</button>
+            <button id="clearHistoryBtn" class="warn">Clear</button>
+          </div>
+        </div>
+        <div class="history" id="historyBox">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Winner</th><th>Mode</th><th>Moves</th><th>Time</th></tr>
+            </thead>
+            <tbody id="historyBody"><tr><td colspan="5" class="muted">No games yet</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+<script>
+/* ------------------------ State ------------------------ */
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const modeSelect = document.getElementById('modeSelect');
+const difficultyWrap = document.getElementById('difficultyWrap');
+const difficultySelect = document.getElementById('difficultySelect');
+const newGameBtn = document.getElementById('newGameBtn');
+const resetScoresBtn = document.getElementById('resetScoresBtn');
+const historyBody = document.getElementById('historyBody');
+const exportCsvBtn = document.getElementById('exportCsvBtn');
+const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+const scoreXEl = document.getElementById('scoreX');
+const scoreOEl = document.getElementById('scoreO');
+const scoreDEl = document.getElementById('scoreD');
+const oLabel = document.getElementById('oLabel');
+
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+let cells = [];
+let state = Array(9).fill('');
+let current = 'X';
+let active = true;
+let vsCpu = false;
+let difficulty = 'hard';
+let moveCount = 0;
+
+/* Persistent scoreboard & history via localStorage */
+let scores = JSON.parse(localStorage.getItem('ttt_scores') || '{"X":0,"O":0,"D":0}');
+let history = JSON.parse(localStorage.getItem('ttt_history') || '[]');
+renderScores();
+renderHistory();
+
+/* ------------------------ UI Setup ------------------------ */
+function buildBoard(){
+  boardEl.innerHTML = '';
+  cells = [];
+  for(let i=0;i<9;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.idx = i;
+    c.addEventListener('click', onCellClick, { once:false });
+    boardEl.appendChild(c);
+    cells.push(c);
+  }
+}
+buildBoard();
+startNew();
+
+modeSelect.addEventListener('change', () => {
+  vsCpu = modeSelect.value === 'cpu';
+  difficultyWrap.style.display = vsCpu ? '' : 'none';
+  oLabel.textContent = vsCpu ? 'Computer (O)' : 'Player O';
+  startNew();
+});
+
+difficultySelect.addEventListener('change', () => {
+  difficulty = difficultySelect.value;
+  startNew();
+});
+
+newGameBtn.addEventListener('click', startNew);
+resetScoresBtn.addEventListener('click', () => {
+  scores = {X:0, O:0, D:0};
+  persistScores();
+  renderScores();
+});
+exportCsvBtn.addEventListener('click', exportHistoryCSV);
+clearHistoryBtn.addEventListener('click', () => {
+  history = [];
+  persistHistory();
+  renderHistory();
+});
+
+/* ------------------------ Game Logic ------------------------ */
+function startNew(){
+  state = Array(9).fill('');
+  current = 'X';
+  active = true;
+  moveCount = 0;
+  cells.forEach(c => {
+    c.textContent = '';
+    c.classList.remove('taken','win');
+  });
+  statusEl.textContent = vsCpu
+    ? `Your turn (X) — CPU: ${difficulty.toUpperCase()}`
+    : `Player ${current}'s turn`;
+}
+
+function onCellClick(e){
+  if(!active) return;
+  const i = +e.currentTarget.dataset.idx;
+  if(state[i] !== '') return;
+
+  place(i, current);
+  const outcome = evaluate();
+  if(outcome) return finish(outcome);
+
+  togglePlayer();
+
+  if(vsCpu && active && current === 'O'){
+    // small delay for UX
+    setTimeout(cpuMove, 350);
+  }
+}
+
+function place(i, sym){
+  state[i] = sym;
+  cells[i].textContent = sym;
+  cells[i].classList.add('taken');
+  moveCount++;
+}
+
+function togglePlayer(){
+  current = current === 'X' ? 'O' : 'X';
+  statusEl.textContent = vsCpu
+    ? (current === 'X' ? `Your turn (X)` : `CPU thinking…`)
+    : `Player ${current}'s turn`;
+}
+
+function evaluate(){
+  for(const [a,b,c] of WIN_LINES){
+    if(state[a] && state[a]===state[b] && state[a]===state[c]){
+      // mark winning tiles
+      [a,b,c].forEach(idx => cells[idx].classList.add('win'));
+      return state[a]; // 'X' or 'O'
+    }
+  }
+  if(!state.includes('')) return 'D'; // draw
+  return null;
+}
+
+function finish(result){
+  active = false;
+  if(result === 'D'){
+    statusEl.textContent = `It's a draw.`;
+    scores.D++; renderScores(); persistScores();
+    pushHistory({winner:'Draw', mode:modeTag(), moves:moveCount});
+  } else {
+    const winnerText = vsCpu ? (result==='X' ? 'You Win!' : 'Computer Wins!') : `Player ${result} Wins!`;
+    statusEl.textContent = winnerText;
+    if(result==='X') scores.X++; else scores.O++;
+    renderScores(); persistScores();
+    pushHistory({winner: vsCpu ? (result==='X'?'Player X':'Computer') : `Player ${result}`, mode:modeTag(), moves:moveCount});
+    celebrate(); // confetti
+  }
+}
+
+/* ------------------------ CPU Logic ------------------------ */
+function cpuMove(){
+  let move;
+  if(difficulty === 'easy'){
+    move = randomMove();
+  } else if(difficulty === 'medium'){
+    move = mediumMove();
+  } else {
+    move = bestMoveMinimax(); // unbeatable
+  }
+  if(move == null) return; // should not happen
+  place(move,'O');
+  const outcome = evaluate();
+  if(outcome) return finish(outcome);
+  togglePlayer();
+}
+
+function emptyIndices(s=state){
+  const arr=[]; for(let i=0;i<9;i++) if(!s[i]) arr.push(i); return arr;
+}
+function randomMove(){
+  const empties = emptyIndices();
+  return empties.length ? empties[Math.floor(Math.random()*empties.length)] : null;
+}
+// Medium: if win now -> take; else if opponent can win next -> block; else random
+function mediumMove(){
+  // try to win
+  for(const i of emptyIndices()){
+    const copy = state.slice(); copy[i]='O';
+    if(checkWinner(copy,'O')) return i;
+  }
+  // block X
+  for(const i of emptyIndices()){
+    const copy = state.slice(); copy[i]='X';
+    if(checkWinner(copy,'X')) return i;
+  }
+  // prefer center, corners, then random
+  if(state[4]==='') return 4;
+  const corners=[0,2,6,8].filter(i=>state[i]==='');
+  if(corners.length) return corners[Math.floor(Math.random()*corners.length)];
+  return randomMove();
+}
+function checkWinner(s, sym){
+  return WIN_LINES.some(([a,b,c]) => s[a]===sym && s[b]===sym && s[c]===sym);
+}
+
+// Hard: Minimax (O is maximizing player)
+function bestMoveMinimax(){
+  let bestScore = -Infinity, move = null;
+  for(const i of emptyIndices()){
+    state[i]='O';
+    const score = minimax(state, 0, false);
+    state[i]='';
+    if(score > bestScore){ bestScore = score; move = i; }
+  }
+  return move;
+}
+const scoresMap = { 'O': 10, 'X': -10, 'D': 0 };
+function minimax(s, depth, isMax){
+  const result = terminal(s);
+  if(result) return scoresMap[result] - Math.sign(scoresMap[result]) * depth; // prefer quicker wins / slower losses
+
+  if(isMax){
+    let best = -Infinity;
+    for(const i of emptyIdxFrom(s)){
+      s[i] = 'O';
+      best = Math.max(best, minimax(s, depth+1, false));
+      s[i] = '';
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for(const i of emptyIdxFrom(s)){
+      s[i] = 'X';
+      best = Math.min(best, minimax(s, depth+1, true));
+      s[i] = '';
+    }
+    return best;
+  }
+}
+function terminal(s){
+  for(const [a,b,c] of WIN_LINES){
+    if(s[a] && s[a]===s[b] && s[a]===s[c]) return s[a]; // 'X' or 'O'
+  }
+  if(!s.includes('')) return 'D';
+  return null;
+}
+function emptyIdxFrom(s){ const arr=[]; for(let i=0;i<9;i++) if(!s[i]) arr.push(i); return arr; }
+
+/* ------------------------ Celebration ------------------------ */
+function celebrate(){
+  // simple lightweight confetti burst
+  const count = 180;
+  const w = window.innerWidth, h = window.innerHeight;
+  for(let i=0;i<count;i++){
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    const left = Math.random()*w;
+    piece.style.left = left+'px';
+    piece.style.background = `hsl(${Math.random()*360},90%,60%)`;
+    piece.style.transform = `translateY(-20px) rotate(${Math.random()*360}deg)`;
+    document.body.appendChild(piece);
+
+    // animate
+    const duration = 1500 + Math.random()*1200;
+    const xDrift = (Math.random()*2-1)*120;
+    const rotate = 300 + Math.random()*400;
+
+    const start = performance.now();
+    function tick(now){
+      const t = Math.min(1, (now - start)/duration);
+      const ease = 1 - Math.pow(1 - t, 2); // easeOutQuad
+      const y = ease * (h + 60);
+      const x = left + xDrift * t + Math.sin(t*8 + i)*8;
+      piece.style.transform = `translate(${x-left}px, ${y-20}px) rotate(${rotate*t}deg)`;
+      piece.style.opacity = String(1 - t);
+      if(t < 1) requestAnimationFrame(tick); else piece.remove();
+    }
+    requestAnimationFrame(tick);
+  }
+}
+
+/* ------------------------ Scoreboard & History ------------------------ */
+function renderScores(){
+  scoreXEl.textContent = scores.X;
+  scoreOEl.textContent = scores.O;
+  scoreDEl.textContent = scores.D;
+}
+function persistScores(){ localStorage.setItem('ttt_scores', JSON.stringify(scores)); }
+
+function pushHistory(entry){
+  const item = {
+    winner: entry.winner,
+    mode: entry.mode,
+    moves: entry.moves,
+    time: new Date().toLocaleString()
+  };
+  history.unshift(item);
+  persistHistory();
+  renderHistory();
+}
+function persistHistory(){ localStorage.setItem('ttt_history', JSON.stringify(history)); }
+function renderHistory(){
+  historyBody.innerHTML = '';
+  if(history.length===0){
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5; td.className = 'muted'; td.textContent = 'No games yet';
+    tr.appendChild(td); historyBody.appendChild(tr); return;
+  }
+  history.forEach((h, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${history.length - idx}</td>
+      <td>${h.winner}</td>
+      <td>${renderModeTag(h.mode)}</td>
+      <td>${h.moves}</td>
+      <td>${h.time}</td>
+    `;
+    historyBody.appendChild(tr);
+  });
+}
+function modeTag(){
+  return vsCpu ? `cpu-${difficulty}` : 'pvp';
+}
+function renderModeTag(tag){
+  let cls='pvp', label='2P';
+  if(tag.startsWith('cpu-')){
+    const d = tag.split('-')[1];
+    cls = d; label = `CPU • ${d}`;
+  }
+  return `<span class="tag ${cls}">${label}</span>`;
+}
+function exportHistoryCSV(){
+  if(history.length===0) return;
+  const header = ['#','Winner','Mode','Moves','Time'];
+  const rows = history.map((h,i)=>[history.length-i, h.winner, h.mode, h.moves, h.time]);
+  const data = [header, ...rows].map(r=>r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([data], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'tic-tac-toe-history.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+</script>
+</body>
+</html>
